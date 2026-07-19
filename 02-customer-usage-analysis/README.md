@@ -1,57 +1,388 @@
-## Customer Behavior & Product Usage Intelligence
+# Customer Health Intelligence & Churn Prevention Framework
 
-*(This README goes in `saas-analytics-portfolio/02-customer-usage-analysis/README.md`, alongside `customer_usage_analysis.sql`.)*
+## Project Overview
 
-### Business problem
+Customer churn rarely happens overnight. Long before customers cancel their subscriptions, they typically exhibit behavioral warning signs such as declining engagement, reduced feature adoption, prolonged inactivity, or deteriorating product usage patterns.
 
-Billing status tells you whether someone is paying. It doesn't tell you whether they're actually getting value out of the product, and those two things drift apart more often than people expect. A customer can be current on their invoice and completely disengaged, quietly counting down to the moment they cancel. By the time that shows up in the churn numbers from project 1, it's already too late to do anything about it.
+Unfortunately, traditional SaaS reporting often identifies churn after it has already occurred.
 
-This project builds a usage-based early warning system instead: who's using the product daily, who's gone quiet, which features people actually adopt, and a churn risk score based on behavior rather than payment status. This is the view a product or customer success team would use to intervene before a customer becomes a churn statistic.
+A customer may:
 
-### Data source
+> - Pay their invoices on time.
+> - Maintain an active subscription.
+> - Appear healthy within billing reports.
+> - Quietly stop receiving value from the product.
 
-Three tables: `customers`, `subscriptions`, and `usage_logs`. Same synthetic SaaS dataset as the other two projects in this repo, documented fully in `data/README.md`. The usage side of things is 7,000 logged interactions across 5,000 customers, tagged by feature (Automation Run, API Call, Integration Sync, Workflow Edit, Error Event) with a count and a date for each.
+By the time declining engagement appears in monthly churn metrics, the opportunity for intervention has frequently passed.
 
-### Methodology
+This project builds a Customer Health Intelligence framework designed to identify early warning indicators of customer disengagement before customers become churn statistics.
 
-Same shape as the other two projects: validate, clean, build one reporting view, then run the KPIs against it. The difference here is that usage data tends to be messier than billing data in real companies, duplicate event logs, missing timestamps from a flaky tracking pixel, that kind of thing, so the cleaning steps in this script matter more than they do in the billing-focused ones.
+The framework enables Product, Customer Success, and Leadership teams to answer critical business questions such as:
 
-I built a single view, `v_usage_master`, that resolves each customer down to one current subscription before joining to their usage history. That resolution step turned out to matter more than I expected, more on that below.
+> - Which customers are most likely to churn?
+> - Which accounts require immediate Customer Success intervention?
+> - Which features drive long-term engagement?
+> - How healthy is our customer base?
+> - Which customers are active but quietly disengaging?
+> - What behavioral patterns distinguish retained customers from churned customers?
 
-### Analysis & error check
+Rather than measuring churn after it occurs, the objective of this project is to identify customers at risk while they are still paying customers.
 
-Three real issues came up in review, and they're all the kind that don't throw an error, they just quietly give you a wrong number that looks plausible.
+---
 
-The cleaning step (Step 2) only deleted rows with a missing customer ID, even though the validation step just above it (Step 1) also flags rows with a missing usage date. Anything that had a valid customer ID but no date would sail through cleaning untouched and then land in an undefined bucket once the DAU and MAU queries tried to group by date, quietly understating both metrics. Fixed by deleting on either condition, matching what the validation step actually checks for.
+## Business Problem
 
-The deduplication step (Step 3) removes duplicate usage records by partitioning on customer ID and usage date. That sounds right until you realize a customer can legitimately use two different features on the same day, an API call in the morning and a workflow edit in the afternoon, and the original query would treat the second one as a duplicate of the first and delete it. That's not deduplication, that's data loss dressed up as cleaning. I added `FeatureUsed` to the partition so a row only gets removed if it's a true duplicate: same customer, same feature, same day.
+Customer retention is one of the most important growth drivers within subscription businesses.
 
-The bigger one: the view (and two of the KPIs, the usage-vs-churn comparison and the churn risk model) joined customers straight to subscriptions on customer ID. In this dataset, a customer can have more than one subscription record over time, a cancellation followed by a resubscribe shows up as two separate rows. Joining straight on customer ID means that customer's usage events get matched against both subscription rows, doubling up in the GROUP BY and skewing the average usage and risk score for anyone who has re-subscribed. I fixed this by resolving each customer down to a single current subscription (the most recently started one, via `ROW_NUMBER()`) before joining to usage. This is the kind of bug that's easy to miss in testing with small sample data, because you need someone with an actual repeat subscription history to notice it's happening.
+Acquiring new customers is frequently more expensive than retaining existing ones, making proactive churn prevention essential for sustainable growth.
 
-### Insight
+Traditional churn reporting provides answers to questions such as:
 
-Feature adoption is close to perfectly even. Across the five tracked feature categories, usage ranges from 1,385 to 1,434 events, meaning every feature sits within about a percentage point and a half of a fifth of total usage. Nothing dominates and nothing is neglected. That's actually a useful finding on its own: if this were a real product, it would mean the team hasn't over-invested in one flashy feature while others go untouched, or it means the usage logging is coarse enough that it can't tell a genuinely sticky feature from a rarely-used one. Either way, it's worth knowing before making a roadmap decision based on "our most popular feature."
+- How many customers cancelled?
+- How much revenue was lost?
+- What was our monthly churn rate?
 
-The one category worth calling out specifically is Error Event, at 1,385 occurrences, essentially tied for the lowest count but still representing nearly a fifth of everything logged. If this system is treating error events as a first-class usage category alongside productive actions like API calls and workflow edits, that's worth a second look. A high rate of logged errors sitting inside your engagement numbers can quietly make usage look healthier than it is, since a customer hitting the product and immediately hitting an error is being counted the same way as a customer who successfully finished a workflow.
+These metrics are valuable but largely retrospective.
 
-### Recommendation
+They do not explain:
 
-Split error events out from the other four categories in reporting, and track an error rate (error events divided by total events) per customer rather than folding it into a single undifferentiated usage count. A customer with a high total usage number driven mostly by error events should be flagged very differently from a customer with the same usage number driven by successful automation runs.
+- Why customers are disengaging.
+- Which customers are likely to leave next.
+- Which behaviors signal declining customer health.
+- Which product experiences contribute most to retention.
 
-Second, use the churn risk model from this script (KPI 10) as a trigger for customer success outreach, specifically for anyone landing in "High Churn Risk" who is still on an Active subscription. That's the exact combination this project was built to catch: paying, but not engaged, and not yet visible in the billing-side churn numbers from project 1.
+This project addresses these limitations by combining customer, subscription, and product usage data to provide an early warning system for customer disengagement and churn risk.
 
-### Business impact
+---
 
-Catching disengagement before it shows up as a cancellation is the whole value case here. Project 1 measured a 29% cancellation rate after the fact. This project is designed to shrink that number by giving customer success a list of at-risk accounts while they're still paying customers, not after they've already left. Even a modest lift in retention among the "High Churn Risk but still Active" segment compounds directly into the MRR numbers from project 1, since retaining an existing customer is consistently cheaper than acquiring a replacement one.
+## Dataset
 
-### What was done
+This project uses a synthetic SaaS dataset consisting of three related tables.
 
-Reviewed the script for logic errors rather than just syntax, found and fixed a cleaning gap, a deduplication bug that was silently deleting legitimate data, and a join fan-out issue affecting two of the ten KPIs, then rebuilt the reporting view so both affected KPIs read from a fan-out-safe source.
+| Table | Description |
+|-------|------------|
+| customers | Customer information |
+| subscriptions | Subscription information |
+| usage_logs | Product usage events |
 
-### Tools used and how they helped
+### Portfolio Composition
 
-T-SQL (SQL Server), using `ROW_NUMBER()` twice, once inside the corrected deduplication CTE and once to resolve each customer down to a single current subscription, `FORMAT()` for monthly grouping, and a `CASE` statement for the churn risk classification. The `ROW_NUMBER()` pattern is doing real work in both places: it's the difference between "delete anything that looks like a duplicate" and "delete only the rows that are actually duplicates," and between "join every subscription a customer has ever had" and "join the one subscription that currently applies."
+- 5,000 Customers
+- 5,000 Subscription Records
+- 7,000+ Usage Events
+- Five Product Features
+- Subscription Lifecycle Monitoring
+- Customer Engagement Tracking
 
-### Results
+### Product Features Tracked
 
-A ten-KPI usage analytics layer covering engagement level, daily and monthly active users, usage-versus-churn comparison, feature adoption, power users, inactive customers, usage segmentation, retention drivers, and a churn risk score, all fan-out-safe. Three real bugs found and fixed: a cleaning gap, a deduplication bug that was destroying legitimate records, and a join issue that was silently double-counting usage for any customer with more than one subscription record.
+- Automation Runs
+- API Calls
+- Integration Syncs
+- Workflow Edits
+- Error Events
+
+> **Note:** Revenue and billing-related analyses are intentionally excluded from this project and are addressed separately within the Revenue Intelligence Framework.
+
+---
+
+## Project Architecture
+
+```
+
+
+                    CUSTOMERS
+                         |
+                         |
+                   SUBSCRIPTIONS
+                         |
+                         |
+                     USAGE LOGS
+                         |
+                         |
+                         ↓
+                 Data Validation Layer
+                         |
+                         |
+                         ↓
+                  Subscription Resolution
+                   (Current Subscription)
+                         |
+                         |
+                         ↓
+                    v_usage_master
+                     (Master View)
+                         |
+        ----------------------------------------------------
+        |                 |                 |               |
+        ↓                 ↓                 ↓               ↓
+   Engagement         Product Usage       Customer        Churn Risk
+    Analytics          Intelligence       Health          Monitoring
+        |                 |                 |               |
+        -----------------------------------------------------
+                         |
+                         ↓
+                  Customer Segmentation
+                         |
+                         ↓
+                   Early Warning Alerts
+                         |
+                         ↓
+                 Customer Success Actions
+
+
+
+```
+
+---
+
+## Technologies Used
+
+- SQL Server (T-SQL)
+- SQL Views
+- Window Functions
+- ROW_NUMBER()
+- Common Table Expressions (CTEs)
+- Aggregate Functions
+- Customer Analytics
+- Product Analytics
+- Churn Analytics
+- Business Intelligence Reporting
+
+---
+
+## Methodology
+
+The framework follows a layered customer health monitoring approach.
+
+### Data Validation
+
+The dataset was validated for:
+
+- Missing Customer IDs
+- Missing Usage Dates
+- Duplicate Usage Records
+- Subscription Consistency
+- Customer-Level Relationship Integrity
+
+### Subscription Resolution
+
+Customers may possess multiple subscription records over time.
+
+Before any usage analysis was performed, customer subscriptions were resolved to their current subscription using:
+
+```sql
+ROW_NUMBER()
+```
+
+This guarantees:
+
+- Accurate customer-level reporting.
+- Consistent churn calculations.
+- Fan-out-safe usage analytics.
+
+### Customer Health Monitoring
+
+The framework monitors:
+
+- Daily Active Users (DAU)
+- Monthly Active Users (MAU)
+- Customer Engagement Levels
+- Feature Adoption Rates
+- Power User Identification
+- Customer Inactivity
+- Churn Risk Scores
+- Customer Segmentation
+- Product Usage Trends
+
+---
+
+## KPIs Developed
+
+This project includes:
+
+- Daily Active User Analysis
+- Monthly Active User Analysis
+- Customer Engagement Monitoring
+- Product Feature Adoption Analysis
+- Customer Usage Segmentation
+- Power User Identification
+- Customer Inactivity Monitoring
+- Retention Driver Analysis
+- Usage versus Churn Analysis
+- Customer Churn Risk Analysis
+
+---
+
+## Data Quality Challenges Solved
+
+### Usage Data Cleaning
+
+The original implementation failed to remove usage records containing missing usage dates.
+
+#### Solution
+
+The cleaning procedures were expanded to validate both:
+
+- Missing Customer IDs
+- Missing Usage Dates
+
+This guarantees more reliable engagement metrics across all KPIs.
+
+---
+
+### Deduplication Improvements
+
+Duplicate usage events were originally identified using:
+
+```sql
+Customer ID + Usage Date
+```
+
+However, customers may legitimately use multiple features on the same day.
+
+#### Solution
+
+Deduplication logic now includes:
+
+```sql
+Customer ID
++ Usage Date
++ Feature Used
+```
+
+This preserves legitimate product interactions while removing only true duplicates.
+
+---
+
+### Customer-Level Join Integrity
+
+Customers may subscribe, cancel, and subsequently resubscribe over time.
+
+Joining usage records directly to subscription histories introduced fan-out issues capable of inflating:
+
+- Usage Metrics
+- Engagement Scores
+- Churn Risk Calculations
+
+#### Solution
+
+Customer subscriptions are first resolved using:
+
+```sql
+ROW_NUMBER()
+```
+
+before being joined to usage histories.
+
+This guarantees accurate customer-level reporting throughout the framework.
+
+---
+
+## Key Insights
+
+Product feature adoption remains relatively balanced across all tracked features.
+
+However, one important finding emerged during the analysis:
+
+> Error Events account for nearly one-fifth of all recorded product interactions.
+
+Although error events are legitimate system events, they do not necessarily represent successful customer engagement.
+
+Customers experiencing:
+
+> - High usage volumes
+> - High error rates
+> - Declining productive interactions
+
+may represent significantly different retention risks than customers demonstrating healthy engagement patterns.
+
+This highlights the importance of measuring:
+
+> **Customer Health**
+
+rather than simply measuring:
+
+> **Customer Activity**
+
+---
+
+## Business Recommendations
+
+- Implement Customer Success outreach workflows for High Churn Risk customers.
+- Monitor declining engagement trends continuously.
+- Track productive product interactions separately from error events.
+- Establish customer health scoring frameworks using behavioral indicators.
+- Prioritize proactive retention initiatives over reactive churn reporting.
+
+---
+
+## Business Impact
+
+The greatest value of this framework lies in identifying customers at risk before they cancel their subscriptions.
+
+Rather than asking:
+
+> **"Which customers left?"**
+
+the framework enables leadership teams to ask:
+
+> **"Which customers are likely to leave next?"**
+
+Even modest improvements in customer retention can compound directly into:
+
+- Higher Monthly Recurring Revenue.
+- Improved Customer Lifetime Value.
+- Reduced acquisition costs.
+- Greater subscription stability.
+- Improved Customer Success outcomes.
+
+More importantly, the framework transforms customer analytics from historical reporting into proactive churn prevention.
+
+---
+
+## Skills Demonstrated
+
+This project demonstrates proficiency in:
+
+- Advanced SQL
+- Customer Analytics
+- Product Analytics
+- Churn Analytics
+- Customer Health Monitoring
+- Window Functions
+- Data Modeling
+- Data Validation
+- Business Intelligence Reporting
+- Decision Support Systems
+
+---
+
+## Project Deliverables
+
+- Customer Health Intelligence Framework
+- Product Engagement Monitoring
+- Churn Risk Detection
+- Customer Segmentation Analysis
+- Product Adoption Intelligence
+- Early Warning Indicators
+- Customer Success Recommendations
+- Executive-Level Customer Reporting
+
+---
+
+## Results
+
+The final solution delivers a Customer Health Intelligence framework capable of monitoring customer engagement, identifying churn risks, and supporting proactive retention initiatives.
+
+By combining behavioral analytics, product intelligence, and customer health monitoring, the framework provides:
+
+- Earlier identification of churn risks.
+- Improved Customer Success interventions.
+- Better visibility into customer engagement.
+- More reliable product usage reporting.
+- A scalable foundation for predictive customer retention analytics.
+
+---
+
+> **Disclaimer:** This project uses a synthetic SaaS dataset designed for analytical and portfolio purposes. All customer and product interactions are representative business scenarios and do not contain real customer information.
