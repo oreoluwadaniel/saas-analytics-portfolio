@@ -1,59 +1,369 @@
-## Billing, Payment & Revenue Leakage Detection
+# Revenue Operations & Revenue Recovery Intelligence Framework
 
-*(This README goes in `saas-analytics-portfolio/03-billing-revenue-leakage/README.md`, alongside `billing_revenue_leakage.sql`.)*
+## Project Overview
 
-### Business problem
+Generating revenue is only the first step in building a successful subscription business. Revenue becomes valuable only when it is successfully collected.
 
-Getting a customer to agree to pay is only half the job. The other half is actually collecting the money, and in subscription billing that second half fails more often than most people assume: failed card charges, invoices nobody follows up on, customers who pay part of what they owe and stop there. Every one of those is revenue the business earned and never received, and unlike churn, it often doesn't show up on anyone's dashboard until finance goes looking for it.
+Many SaaS companies closely monitor metrics such as Monthly Recurring Revenue (MRR), Customer Churn, and Customer Growth while paying considerably less attention to what happens after invoices are generated. Failed payments, unpaid invoices, delayed collections, and revenue leakage can quietly erode business performance despite otherwise healthy growth metrics.
 
-This project is that finance-ops view: how much of what's been billed has actually been collected, which invoices are sitting unpaid, which customers are the biggest collection risk, and how long people take to pay once they do. It's built to answer the question "where exactly is the money we're owed" rather than the broader "is the business healthy" question project 1 covers.
+A business may report:
 
-### Data source
+> - Growing Monthly Recurring Revenue.
+> - Increasing customer acquisition.
+> - Strong subscription growth.
+> - Healthy customer retention.
 
-Four tables: `subscriptions`, `subscription_plans`, `invoices`, and `payments`. Same synthetic SaaS dataset used across all three projects in this repo, fully documented in `data/README.md`. 6,000 invoices, 6,000 payment records, across 5,000 subscriptions and 5 pricing plans.
+while simultaneously experiencing:
 
-### Methodology
+> - Rising failed payment rates.
+> - Growing accounts receivable balances.
+> - Increasing numbers of unpaid invoices.
+> - Significant revenue leakage.
 
-Validate, clean, build one view, run the KPIs against it, same process as the other two projects. The validation step here specifically checks for invoices with no matching payment record, negative billed amounts, and negative payments, since a finance-facing report is the one place where a data error can directly produce a wrong dollar figure that someone acts on.
+Without continuous billing and collections monitoring, these problems frequently remain hidden until they materially impact cash flow performance.
 
-I paid particular attention to how NULLs behave through this script, because that turned out to be where the real problems were hiding.
+This project builds an enterprise-level Revenue Operations Intelligence framework designed to provide visibility into:
 
-### Analysis & error check
+> - Revenue collection performance
+> - Billing operations health
+> - Payment behaviors and collection risks
+> - Revenue leakage trends
+> - High-risk customer accounts
+> - Cash flow performance indicators
+> - Revenue recovery opportunities
 
-This is the project where I found the most consequential bug of all three, and it's worth walking through carefully because it's a pattern that shows up constantly in financial SQL.
+Rather than asking:
 
-`v_billing_master` is built with LEFT JOINs from subscriptions through invoices to payments, so any invoice with zero payment history comes through with `AmountPaid` as NULL, not zero. That's correct and expected. The problem is what happens next: `billed_amount - AmountPaid`, when `AmountPaid` is NULL, evaluates to NULL, and `SUM()` ignores NULLs rather than treating them as zero.
+> **"How much revenue did we generate?"**
 
-That single behavior broke two KPIs. In KPI 1 (total billed vs. collected), any invoice with no payment at all contributed nothing to the `revenue_gap` calculation, meaning the worst-case invoices, the ones that never got paid a cent, were invisible to the one metric meant to surface exactly that. In KPI 8 (high risk customer identification), a customer whose every invoice went unpaid would have `SUM(billed_amount - AmountPaid)` come out as NULL for every group, and `HAVING NULL > 0` is never true, so that customer never appears on the high-risk list at all. The customers with the single worst payment behavior in the entire dataset, zero dollars collected against them, were the ones this report was silently leaving out. A collections report that excludes your worst accounts isn't just incomplete, it's actively pointing attention away from where it's needed most.
+this framework answers:
 
-The fix is `COALESCE(AmountPaid, 0)` everywhere the calculation touches a payment amount that might not exist. I applied it consistently across KPI 1, 3, 5, 6, and 8.
+> **"How much revenue did we actually collect?"**
 
-Worth noting: KPI 9, the revenue leakage classification engine, already had this right in the original script. It explicitly checks `WHEN SUM(AmountPaid) IS NULL THEN 'No Payment'` before anything else. That's the correct pattern, and it's exactly why the inconsistency in KPI 1 and KPI 8 stood out once I found it: one query in the same file was handling this correctly and two others weren't, which is the kind of inconsistency that's easy to miss when a script is written over multiple sessions and never gets a full read-through against its own internal logic.
+---
 
-### Insight
+## Business Problem
 
-24.5% of all invoices (1,471 of 6,000) are sitting unpaid. On the payment attempt side, 20.4% of payment attempts (1,224 of 6,000) came back as Failed rather than Completed. Those are two different failure points in the same pipeline, and they compound: an invoice can go unpaid because nobody ever attempted to collect it, or because collection was attempted and the card declined.
+Revenue reported on financial statements does not always represent revenue received.
 
-Using the average plan price across the five tiers (roughly $98/month) as a rough per-invoice estimate, 1,471 unpaid invoices represent somewhere in the neighborhood of $144,000 sitting uncollected. That number is an approximation, not an exact sum from the corrected KPI 1 query, but it's the right order of magnitude to make the point: this isn't a rounding error, it's a material chunk of revenue that was earned and never landed in the bank account, and before the fix described above, a meaningful slice of it wasn't even visible in the report meant to catch it.
+Subscription businesses regularly experience challenges such as:
 
-### Recommendation
+- Failed payment attempts
+- Unpaid invoices
+- Partial payments
+- Delayed collections
+- Revenue leakage
+- High-risk customer accounts
 
-Run the corrected KPI 8 query as a weekly collections list, sorted by unpaid amount descending, and prioritize outreach to whoever's at the top rather than working invoices in the order they happened to be billed. Given that failed payments are running above 20%, I'd also push for automatic payment retry logic (most billing platforms support retrying a failed card charge two or three times over a week before flagging it as truly failed) since a meaningful chunk of that 20% is likely expired cards and temporary declines rather than customers actively refusing to pay.
+Without proactive monitoring, these issues create operational challenges across:
 
-Second, treat this project's KPI 8 output and project 1's Past Due subscription list as the same underlying signal viewed from two different tables, and make sure whoever owns collections is looking at both together rather than each team working from a different partial picture.
+- Finance Teams
+- Revenue Operations
+- Billing Teams
+- Customer Success Teams
+- Executive Leadership
 
-### Business impact
+This project addresses these challenges by providing a centralized billing intelligence framework capable of monitoring both revenue collection performance and collection risks across the subscription portfolio.
 
-The direct fix here is visibility: before correcting the NULL handling, the customers with the worst payment history in the dataset, complete non-payment, were invisible to the collections risk report. Surfacing them is the difference between a collections process that chases whoever's easiest to find and one that chases the accounts actually worth the most. On the roughly $144,000 in estimated outstanding invoice value, even a modest improvement in collection rate from better-targeted follow-up (say, recovering an extra 15 to 20% of that through active outreach instead of letting it sit) is real cash, not a reporting exercise.
+---
 
-### What was done
+## Dataset
 
-Reviewed every KPI in the script for how it handles NULL payment values specifically, found that two of nine KPIs were silently dropping the worst-case customers and invoices due to NULL arithmetic, applied `COALESCE` consistently across every affected query, and confirmed the fix against the one KPI in the file that already had the pattern right.
+This project uses a synthetic SaaS dataset consisting of four related tables.
 
-### Tools used and how they helped
+| Table | Description |
+|-------|------------|
+| subscriptions | Subscription information |
+| subscription_plans | Pricing plan information |
+| invoices | Customer billing records |
+| payments | Payment collection records |
 
-T-SQL (SQL Server), with `COALESCE()` doing the heavy lifting throughout, `DATEDIFF()` for measuring payment delay in days, and a single reusable view (`v_billing_master`) joining subscriptions through to payments. The `COALESCE` fix is a small change syntactically, one function wrapped around one column, but it's the difference between a leakage report that works and one that quietly exempts the accounts it most needs to catch.
+### Portfolio Composition
 
-### Results
+- 5,000 Subscription Records
+- 6,000 Invoices
+- 6,000 Payment Records
+- Five Subscription Plans
+- Multi-Tier Pricing Structure
 
-A nine-KPI billing and collections layer covering billed-versus-collected revenue, unpaid invoices, partial payments, payment success rate, revenue by plan, customer payment behavior, payment delay, high-risk customer identification, and a full revenue leakage classification. One serious NULL-handling bug found and fixed across two KPIs, both now consistent with the one query in the file that already handled it correctly.
+> **Note:** Customer engagement and revenue growth analyses are intentionally addressed separately within Projects 01 and 02 of this repository.
+
+---
+
+## Project Architecture
+
+```
+
+
+               SUBSCRIPTIONS
+                      |
+                      |
+              SUBSCRIPTION PLANS
+                      |
+                      |
+                   INVOICES
+                      |
+                      |
+                   PAYMENTS
+                      |
+                      |
+                      ↓
+              Data Validation Layer
+                      |
+                      |
+                      ↓
+               v_billing_master
+                  (Master View)
+                      |
+        -----------------------------------------
+        |                   |                    |
+        ↓                   ↓                    ↓
+     Billing            Payment             Revenue
+   Intelligence       Performance           Recovery
+        |                   |                    |
+        ------------------------------------------
+                      |
+                      ↓
+               Revenue Leakage
+                   Monitoring
+                      |
+                      ↓
+               Collection Risk
+                  Detection
+                      |
+                      ↓
+               Customer Prioritization
+                      |
+                      ↓
+                Executive Insights
+
+
+
+```
+
+---
+
+## Technologies Used
+
+- SQL Server (T-SQL)
+- SQL Views
+- Common Table Expressions (CTEs)
+- Aggregate Functions
+- COALESCE()
+- DATEDIFF()
+- Financial Analytics
+- Revenue Operations Analytics
+- Business Intelligence Reporting
+
+---
+
+## Methodology
+
+The framework follows a layered revenue operations monitoring approach.
+
+### Data Validation
+
+The dataset was validated for:
+
+- Missing payment records
+- Negative invoice amounts
+- Negative payment values
+- Revenue inconsistencies
+- Invoice-payment relationship integrity
+
+### Billing Intelligence Framework
+
+A reusable reporting layer (`v_billing_master`) was developed to provide a single source of truth for all downstream analyses.
+
+The framework monitors:
+
+- Revenue Collection Rates
+- Payment Success Rates
+- Revenue Leakage
+- Customer Payment Behaviors
+- Invoice Aging Trends
+- High-Risk Accounts
+- Payment Delays
+- Collection Performance
+
+---
+
+## KPIs Developed
+
+This project includes:
+
+- Billed versus Collected Revenue Analysis
+- Unpaid Invoice Monitoring
+- Partial Payment Analysis
+- Payment Success Rate Analysis
+- Revenue Performance by Subscription Plan
+- Customer Payment Behavior Analysis
+- Payment Delay Monitoring
+- High-Risk Customer Identification
+- Revenue Leakage Classification
+
+---
+
+## Data Quality Challenges Solved
+
+### Revenue Leakage Visibility
+
+The most significant challenge identified during development involved NULL payment values.
+
+Invoices without payment records correctly produced:
+
+```sql
+AmountPaid = NULL
+```
+
+However, downstream calculations performed:
+
+```sql
+billed_amount - AmountPaid
+```
+
+which produced:
+
+```sql
+NULL
+```
+
+rather than:
+
+```sql
+billed_amount
+```
+
+This behavior silently excluded the highest-risk accounts from multiple collection reports.
+
+### Solution
+
+NULL handling was standardized using:
+
+```sql
+COALESCE(AmountPaid,0)
+```
+
+across all affected KPIs.
+
+This improvement guarantees:
+
+- Accurate revenue leakage calculations.
+- Improved customer risk identification.
+- Reliable collection reporting.
+- Complete invoice visibility.
+
+---
+
+## Key Insights
+
+Portfolio-level analysis identified several important revenue operation trends.
+
+### Revenue Leakage Monitoring
+
+The analysis revealed:
+
+> - 1,471 unpaid invoices.
+> - Approximately 24.5% of invoices remain uncollected.
+> - 20.4% of payment attempts failed.
+
+These findings highlight two distinct collection challenges:
+
+> - Revenue that was never successfully collected.
+> - Revenue where collection attempts were unsuccessful.
+
+Both contribute directly to deteriorating cash flow performance.
+
+### Collection Risk Monitoring
+
+Perhaps the most important finding was that customers exhibiting the worst payment behavior were previously invisible within collection reports because of NULL-handling inconsistencies.
+
+This highlights an important lesson within financial analytics:
+
+> **Incomplete financial reporting can create operational blind spots that disproportionately affect the accounts requiring the greatest attention.**
+
+---
+
+## Business Recommendations
+
+- Implement automated payment retry workflows.
+- Establish weekly collection prioritization reports.
+- Monitor high-risk customer accounts continuously.
+- Track revenue leakage trends proactively.
+- Integrate billing intelligence with subscription health monitoring.
+
+---
+
+## Business Impact
+
+Revenue leakage is not simply a reporting problem—it is a cash flow problem.
+
+Using average subscription values across the portfolio, approximately:
+
+> **\$144,000**
+
+of estimated invoice value currently remains uncollected.
+
+Even modest improvements in collection performance can produce significant improvements in:
+
+- Cash flow performance.
+- Customer retention initiatives.
+- Revenue forecasting accuracy.
+- Financial planning.
+- Collection efficiency.
+
+Most importantly, this framework transforms billing analytics from:
+
+> **"Which invoices remain unpaid?"**
+
+into:
+
+> **"Which revenue recovery opportunities should we prioritize today?"**
+
+---
+
+## Skills Demonstrated
+
+This project demonstrates proficiency in:
+
+- Advanced SQL
+- Financial Analytics
+- Revenue Operations Analytics
+- Revenue Leakage Detection
+- Data Validation
+- Business Intelligence Reporting
+- Data Modeling
+- Decision Support Systems
+- Cash Flow Analytics
+- Problem Solving
+
+---
+
+## Project Deliverables
+
+- Revenue Operations Intelligence Framework
+- Revenue Leakage Monitoring
+- Collection Risk Analysis
+- Customer Payment Intelligence
+- Revenue Recovery Analytics
+- Cash Flow Monitoring
+- Executive-Level Financial Reporting
+- Business Recommendations
+
+---
+
+## Results
+
+The final solution delivers an enterprise-level Revenue Operations Intelligence framework capable of monitoring billing performance, identifying collection risks, and uncovering revenue recovery opportunities.
+
+By combining payment analytics, collection intelligence, and revenue leakage monitoring, the framework provides:
+
+- Improved cash flow visibility.
+- Better collection prioritization.
+- Earlier identification of revenue risks.
+- Enhanced executive-level financial reporting.
+- A scalable foundation for predictive revenue recovery analytics.
+
+---
+
+> **Disclaimer:** This project uses a synthetic SaaS dataset designed for analytical and portfolio purposes. All financial scenarios are representative business cases and do not contain real customer information.
