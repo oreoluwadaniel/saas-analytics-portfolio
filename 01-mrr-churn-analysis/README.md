@@ -1,61 +1,364 @@
-## MRR, Churn & Revenue Intelligence
+# Revenue Growth, Retention & Subscription Intelligence Framework
 
-*(This README goes in `saas-analytics-portfolio/01-mrr-churn-analysis/README.md`, alongside `mrr_churn_analysis.sql`.)*
+## Project Overview
 
-### Business problem
+Recurring revenue is the foundation of every SaaS business, but sustainable growth requires more than simply acquiring new customers. Companies must continuously monitor revenue performance, customer retention, payment collection, and subscription health to understand whether the business is growing efficiently or quietly accumulating risk.
 
-A subscription business lives or dies by three numbers: how much recurring revenue is coming in, how many customers are leaving, and how much of the revenue that's owed actually gets collected. Most SaaS companies I've looked at can answer one of those questions cleanly and are fuzzy on the other two, usually because the data sits in three different systems (a billing tool, a CRM, a spreadsheet someone updates by hand).
+A company may report growing Monthly Recurring Revenue (MRR) while simultaneously experiencing rising churn rates, deteriorating payment performance, or increasing numbers of past-due subscriptions. Without continuous monitoring, these risks often remain hidden behind headline growth metrics.
 
-This project answers all three from one place: how much revenue is landing each month, what the churn rate looks like, which plans are actually worth the most, and where money is slipping through the cracks on unpaid invoices. The goal is the kind of report a head of growth or a CFO could open and immediately know whether the business is healthy or quietly bleeding.
+This project builds an enterprise-level Revenue Intelligence framework designed to provide executive visibility into:
 
-### Data source
+> - Revenue growth and collection performance
+> - Customer churn and retention trends
+> - Subscription portfolio health
+> - Customer Lifetime Value (CLV)
+> - Revenue leakage through unpaid invoices
+> - Customer segmentation and subscription performance
+> - Early warning indicators of declining customer health
 
-Six related tables: `customers`, `subscriptions`, `subscription_plans`, `invoices`, and `payments` (this project doesn't touch `usage_logs`, that's project 2). I generated the data myself to behave like a real SaaS company rather than pulling from an actual company's books, and the full schema and row counts are documented in `data/README.md` at the root of this repo. Scale: 5,000 customers, 5,000 subscription records, 6,000 invoices, 6,000 payments, across 5 pricing plans from $29.99 to $199.99 a month.
+Rather than focusing solely on how much revenue the business generates, the objective of this project is to understand the quality, sustainability, and risks associated with that revenue.
 
-### Methodology
+---
 
-I followed the process the script lays out at the top: validate the data first, clean what needs cleaning, build one reporting view that joins everything together, then run the KPI queries against that view instead of hitting the raw tables over and over. Building `v_saas_master` once and reusing it for six of the nine KPIs keeps the logic in one place. If the join logic ever needs to change, I only have to change it once instead of hunting through nine separate queries.
+## Business Problem
 
-I ran the validation queries first (checking for null customer IDs, null invoice amounts, and subscriptions where the start date is somehow after the end date) before writing a single KPI. There's no point calculating churn rate on top of data that might have broken subscription records underneath it.
+Leadership teams regularly ask questions such as:
 
-### Analysis & error check
+> - Is Monthly Recurring Revenue growing sustainably?
+> - How much revenue is being lost through customer churn?
+> - Which subscription plans contribute most to business performance?
+> - How much revenue remains uncollected?
+> - Which customers are most valuable to the business?
+> - Are payment issues becoming an early indicator of customer churn?
+> - Which customer segments require proactive retention efforts?
 
-I went through this script the way I'd review a teammate's pull request, not just checking that it runs, but checking that it gives the right answer for the right reason. Two real issues turned up:
+These questions are frequently answered across multiple systems including:
 
-The churn rate and churned revenue queries (KPI 3 and KPI 6) filter on `status = 'cancelled'`, which only works correctly after Step 3 has already run and converted all the status values to lowercase. Run the file top to bottom and you're fine. But the moment someone (including future me) copies just the churn rate query into a scheduled report or a dashboard's data source without also running Step 3 first, it silently returns 0% churn instead of throwing an error, which is worse than a query that fails loudly. I fixed both by wrapping the comparison in `LOWER()` so the query is correct regardless of whether the standardization step ran.
+- Billing Platforms
+- CRM Systems
+- Payment Systems
+- Customer Databases
+- Financial Reports
 
-The customer segmentation query (KPI 9) checks `SUM(AmountPaid) < 100` before it checks whether the sum is NULL. In SQL, comparing NULL to a number doesn't return false, it returns unknown, which behaves like false for CASE purposes, so the query still worked. But it worked by accident of NULL-handling behavior rather than by clearly stated intent, and that's the kind of thing that looks fine in testing and confuses someone six months later. I moved the NULL check to the top of the CASE statement so the logic reads the way it actually executes.
+This project centralizes those insights into a single reporting framework capable of monitoring both revenue performance and subscription health.
 
-I also renamed the output of KPI 1 from "MRR" to "collected_revenue." The original query sums `AmountPaid`, which only counts money that has actually come in. That's a legitimate and useful number, but it's a cash-collected view, not the standard MRR definition (active subscriptions times their monthly price, regardless of whether that month's invoice has been paid yet). Calling it MRR when it's really "revenue we've actually collected" would mislead anyone using this for forecasting.
+---
 
-Beyond those, I checked the dataset itself against what the validation queries were designed to catch: no negative invoice or payment amounts, no missing customer IDs. The corrected script is in `mrr_churn_analysis.sql`, with each fix marked inline as a comment.
+## Dataset
 
-### Insight
+This project uses a synthetic SaaS subscription dataset consisting of five related tables.
 
-Cancellation rate came out to 29% of all subscriptions (1,452 of 5,000). On its own that's a number you'd want lower, but it's not the number that stood out most.
+| Table | Description |
+|-------|------------|
+| customers | Customer information |
+| subscriptions | Subscription details and statuses |
+| subscription_plans | Pricing plan information |
+| invoices | Customer billing records |
+| payments | Payment collection information |
 
-What stood out is that 1,772 subscriptions, or 35.4% of the total, are sitting in "Past Due" status, almost exactly matching the 1,776 subscriptions that are "Active" (35.5%). For every customer currently paying on time, there's very nearly one customer who is behind. Past Due isn't cancelled yet, but it's the stage right before cancellation, and a book of business where a third of subscriptions are already behind on payment is not a book of business that's stable. It's a leading indicator, and it's a bigger one than the churn rate itself.
+### Portfolio Composition
 
-On the leakage side, unpaid invoices are sitting at 1,471 out of 6,000 total, 24.5% of everything ever billed. That's revenue this business has technically earned and hasn't collected.
+- 5,000 Customers
+- 5,000 Subscription Records
+- 6,000 Invoices
+- 6,000 Payment Records
+- Five Pricing Plans
+- Subscription Prices ranging from \$29.99 to \$199.99
 
-### Recommendation
+> **Note:** Product usage data is intentionally excluded from this project and is analyzed separately within the Customer Behavior & Product Intelligence Framework.
 
-Treat Past Due as its own workflow, not a waiting room before cancellation. Right now the data suggests these accounts sit in that status without a clear trigger for action. I'd build an automated dunning sequence (payment retry, then an email, then a call from someone on the team) that kicks in the moment a subscription flips to Past Due, rather than waiting for it to become Cancelled. Given how close the Past Due count is to the Active count, this single workflow probably has more revenue impact than any acquisition initiative the company could run this quarter.
+---
 
-Second, don't report "MRR" without specifying whether it's billed or collected. Finance and growth teams often use these interchangeably in conversation, and a 24.5% unpaid invoice rate means the gap between the two numbers is real money, not a rounding error.
+## Project Architecture
 
-### Business impact
+```
 
-If even half of the Past Due subscriptions are recoverable through a faster, more structured follow-up process, that's roughly 880 subscriptions moving back to Active instead of drifting into Cancelled. At an average plan price across the five tiers of roughly $98/month, that's in the neighborhood of $86,000 in monthly recurring revenue retained rather than lost, plus whatever share of the $1,471 unpaid invoices get collected once there's an actual process chasing them instead of a status sitting quietly in a database.
 
-### What was done
+                   CUSTOMERS
+                        |
+                        |
+                  SUBSCRIPTIONS
+                        |
+                        |
+                SUBSCRIPTION PLANS
+                        |
+                        |
+                        ↓
+                    INVOICES
+                        |
+                        |
+                     PAYMENTS
+                        |
+                        |
+                        ↓
+                 Data Validation Layer
+                        |
+                        |
+                        ↓
+                  v_saas_master
+                  (Master View)
+                        |
+        ----------------------------------------------------
+        |                |                 |               |
+        ↓                ↓                 ↓               ↓
+    Revenue          Churn &            Payment          Customer
+   Monitoring       Retention          Performance      Intelligence
+        |                |                 |               |
+        ----------------------------------------------------
+                        |
+                        ↓
+                 Subscription Health
+                      Monitoring
+                        |
+                        ↓
+               Revenue Leakage Detection
+                        |
+                        ↓
+                 Executive Business Insights
 
-Reviewed the original script section by section, ran the validation logic against the actual data to confirm what it would and wouldn't catch, fixed the two logic issues described above, renamed one misleading output column, and documented every change inline in the corrected SQL file.
 
-### Tools used and how they helped
 
-Written in T-SQL (SQL Server), using `FORMAT()` for date-to-month grouping, a `CASE` statement for segmentation, and a single reusable view (`v_saas_master`) to avoid repeating five-table joins across nine separate KPI queries. Building the view once meant every KPI downstream automatically inherited the same join logic, so there's only one place to fix a join bug instead of nine.
+```
 
-### Results
+---
 
-A nine-KPI reporting layer covering recurring revenue collected by month, active customer count, churn rate, revenue by plan, customer lifetime value, churned revenue, cohort growth, unpaid invoice count, and a customer value segmentation, all built on top of one shared view. Two real logic bugs found and fixed, both documented with the reasoning behind the fix, not just the fix itself.
+## Technologies Used
+
+- SQL Server (T-SQL)
+- SQL Views
+- Common Table Expressions (CTEs)
+- Aggregate Functions
+- CASE Statements
+- Customer Analytics
+- Revenue Analytics
+- Financial Analytics
+- Subscription Intelligence
+- Business Intelligence Reporting
+
+---
+
+## Methodology
+
+The framework follows a layered revenue monitoring approach.
+
+### Data Validation
+
+The dataset was validated for:
+
+- Missing Customer IDs
+- Missing Invoice Amounts
+- Invalid Subscription Dates
+- Negative Payment Values
+- Inconsistent Subscription Records
+
+### Reporting Framework
+
+A reusable reporting view (`v_saas_master`) was developed to serve as the single source of truth for all downstream analyses.
+
+This approach ensures:
+
+- Consistent KPI calculations
+- Improved maintainability
+- Reduced query duplication
+- Reliable business reporting
+
+### Revenue Intelligence Analysis
+
+The project monitors:
+
+- Monthly Revenue Performance
+- Customer Retention
+- Subscription Health
+- Customer Lifetime Value
+- Revenue Leakage
+- Collection Performance
+- Customer Segmentation
+- Subscription Portfolio Performance
+
+---
+
+## KPIs Developed
+
+This framework includes:
+
+- Monthly Revenue Analysis
+- Active Customer Monitoring
+- Customer Churn Analysis
+- Revenue by Subscription Plan
+- Customer Lifetime Value Analysis
+- Churned Revenue Monitoring
+- Customer Growth Analysis
+- Unpaid Invoice Analysis
+- Customer Value Segmentation
+
+---
+
+## Data Quality Challenges Solved
+
+### Churn Rate Logic
+
+The original churn analysis depended upon subscription statuses being standardized before execution.
+
+#### Solution
+
+Status comparisons were standardized using:
+
+```sql
+LOWER(status)
+```
+
+This guarantees that churn metrics remain accurate regardless of case formatting inconsistencies.
+
+---
+
+### Customer Segmentation Logic
+
+Customer segmentation logic relied upon SQL's implicit NULL-handling behaviour.
+
+#### Solution
+
+NULL handling was made explicit within the CASE statement to improve:
+
+- Readability
+- Maintainability
+- Reporting accuracy
+
+---
+
+### Revenue Classification Improvements
+
+The original implementation labelled collected payments as:
+
+> Monthly Recurring Revenue (MRR)
+
+However, the metric only represented:
+
+> Revenue that had actually been collected.
+
+#### Solution
+
+The metric was renamed:
+
+> `Collected Revenue`
+
+This distinction provides clearer financial reporting by separating:
+
+- Revenue Earned
+- Revenue Billed
+- Revenue Collected
+
+---
+
+## Key Insights
+
+Portfolio-level analysis revealed several significant trends.
+
+### Subscription Health Monitoring
+
+The analysis identified:
+
+> - 35.5% Active Subscriptions
+> - 35.4% Past Due Subscriptions
+> - 29.0% Cancelled Subscriptions
+
+The most significant finding was not the churn rate itself but the size of the Past Due portfolio.
+
+For every active subscription within the business, there is nearly one subscription currently behind on payment.
+
+Past Due subscriptions represent an important early warning indicator because they frequently precede customer churn and revenue loss.
+
+### Revenue Leakage
+
+The analysis also revealed:
+
+> - 1,471 unpaid invoices
+> - Approximately 24.5% of all invoices remain uncollected
+
+This highlights a substantial opportunity for improving both cash flow performance and customer retention strategies.
+
+---
+
+## Business Recommendations
+
+- Implement automated dunning workflows for Past Due subscriptions.
+- Establish proactive customer retention programs before cancellations occur.
+- Monitor subscription health alongside traditional revenue metrics.
+- Separate billed revenue from collected revenue during executive reporting.
+- Continuously monitor unpaid invoice trends and collection performance.
+
+---
+
+## Business Impact
+
+Past Due subscriptions should not be viewed as administrative issues—they are leading indicators of future revenue loss.
+
+If only half of the Past Due subscriptions are successfully recovered through proactive intervention, the business could retain approximately:
+
+> **880 subscriptions**
+
+At an average subscription value of approximately:
+
+> **\$98 per month**
+
+This represents roughly:
+
+> **\$86,000 in retained Monthly Recurring Revenue**
+
+before accounting for improvements in invoice collections and customer lifetime value.
+
+More importantly, this framework shifts leadership conversations from:
+
+> **"How much revenue did we make?"**
+
+to
+
+> **"How healthy, sustainable, and recoverable is our revenue portfolio?"**
+
+---
+
+## Skills Demonstrated
+
+This project demonstrates proficiency in:
+
+- Advanced SQL
+- Revenue Analytics
+- SaaS Analytics
+- Financial Analytics
+- Customer Retention Analysis
+- Subscription Intelligence
+- Data Modeling
+- Data Validation
+- KPI Development
+- Business Intelligence Reporting
+- Decision Support Systems
+
+---
+
+## Project Deliverables
+
+- Revenue Intelligence Framework
+- Subscription Health Monitoring
+- Customer Retention Analytics
+- Revenue Leakage Detection
+- Customer Lifetime Value Analysis
+- Customer Segmentation Analysis
+- Executive-Level Revenue Reporting
+- Business Recommendations
+
+---
+
+## Results
+
+The final solution delivers an enterprise-level Revenue Intelligence framework capable of monitoring revenue performance, customer retention, and subscription portfolio health simultaneously.
+
+By combining revenue analytics, subscription monitoring, and customer intelligence, the framework provides:
+
+- Improved visibility into revenue performance.
+- Earlier identification of churn risks.
+- Better collection and retention strategies.
+- Reliable executive-level business reporting.
+- A scalable foundation for predictive churn and revenue analytics.
+
+---
+
+> **Disclaimer:** This project uses a synthetic SaaS dataset designed for analytical and portfolio purposes. All business scenarios are representative of real-world SaaS analytics challenges and do not contain real customer information.
