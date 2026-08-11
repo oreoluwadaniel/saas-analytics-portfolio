@@ -290,7 +290,7 @@ This highlights a substantial opportunity for improving both cash flow performan
 
 ## Business Impact
 
-Past Due subscriptions should not be viewed as administrative issues—they are leading indicators of future revenue loss.
+Past Due subscriptions should not be viewed as administrative issues. They are leading indicators of future revenue loss.
 
 If only half of the Past Due subscriptions are successfully recovered through proactive intervention, the business could retain approximately:
 

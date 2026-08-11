@@ -296,7 +296,7 @@ This highlights an important lesson within financial analytics:
 
 ## Business Impact
 
-Revenue leakage is not simply a reporting problem—it is a cash flow problem.
+Revenue leakage is not simply a reporting problem. It is a cash flow problem.
 
 Using average subscription values across the portfolio, approximately:
 
