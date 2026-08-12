@@ -1,367 +1,176 @@
-# Enterprise SaaS Growth, Revenue & Customer Intelligence Platform
+# SaaS Revenue, Product and Billing Analytics
 
-## Overview
+A set of three SQL case studies built from one synthetic SaaS dataset. The work follows a subscription business from recurring revenue and churn, through product usage, to unpaid invoices and revenue leakage.
 
-Modern SaaS businesses make thousands of decisions every day across Revenue, Product, Finance, and Customer Success teams. Although these teams ask different questions, they are often working from the same underlying data.
+The point of the repository is not to show a long list of SQL functions. It is to show how the same customer, subscription, billing, and usage data can answer different questions for Finance, Product, Customer Success, and Revenue Operations.
 
-For example:
-
-> - Finance wants to know why revenue is declining.
-> - Leadership wants to understand whether customer churn is increasing.
-> - Product teams want to know which features drive engagement and retention.
-> - Customer Success teams want to identify customers at risk of leaving.
-> - Revenue Operations teams need visibility into failed payments and revenue leakage.
-
-These questions may appear unrelated, but they are frequently answered using the same customer, subscription, billing, and product usage data.
-
-This repository simulates how an enterprise SaaS organization transforms raw operational data into actionable business intelligence.
-
-Rather than treating SaaS analytics as a single project, this repository approaches it from three different business perspectives:
-
-- Revenue Intelligence
-- Product & Customer Intelligence
-- Billing & Revenue Operations Intelligence
-
-Each project addresses a different business problem while working from the same underlying dataset, closely mirroring how analytics teams operate in real-world organizations.
+**Data:** synthetic
+**Primary tool:** SQL Server (T-SQL)
+**Coverage:** 5,000 customers and subscriptions, 6,000 invoices and payments, 7,000+ usage records
 
 ---
 
-## Business Problems Addressed
+## The three decisions
 
-This repository answers critical business questions such as:
-
-### Revenue & Growth
-
-> - Is Monthly Recurring Revenue (MRR) growing or declining?
-> - Which customers contribute most to revenue?
-> - How much revenue is being lost through customer churn?
-> - Which customer segments have the highest lifetime value?
-> - What trends indicate deteriorating portfolio health?
-
-### Product & Customer Intelligence
-
-> - Which customers are actively using the product?
-> - Which features drive customer engagement?
-> - Which accounts are most likely to churn?
-> - Are customers receiving value from the product?
-> - How can Customer Success teams intervene before churn occurs?
-
-### Billing & Revenue Operations
-
-> - Which invoices remain unpaid?
-> - Which accounts present the greatest collection risk?
-> - How much revenue leakage exists within the business?
-> - How long do customers typically take to make payments?
-> - How can billing operations improve cash flow performance?
+| Case study | Management question | Main measures |
+|---|---|---|
+| [01. MRR and Churn](01-mrr-churn-analysis/) | Is recurring revenue growing, and where is churn reducing it? | MRR, churn, CLV, revenue movement |
+| [02. Customer Usage](02-customer-usage-analysis/) | Which usage patterns are associated with retention and churn? | DAU, MAU, feature adoption, engagement, churn risk |
+| [03. Billing and Revenue Leakage](03-billing-revenue-leakage/) | What has been billed but not collected, and where is cash at risk? | Collections, invoice aging, outstanding receivables, payment performance |
 
 ---
 
-## Repository Architecture
+## How the data connects
 
+```text
+Customers
+   |
+   +---- Subscriptions ---- Subscription Plans
+   |
+   +---- Usage Logs ------- Product Usage
+   |
+   +---- Invoices --------- Payments
+
+                 |
+                 v
+        SQL analytical views
+                 |
+        +--------+---------+
+        |        |         |
+      Revenue  Product   Billing
+      review   review    review
 ```
 
-                    CUSTOMERS
-                         |
-                         |
-                    SUBSCRIPTIONS
-                         |
-                         |
-                 SUBSCRIPTION PLANS
-                         |
-                         |
-               -------------------------
-               |                       |
-               ↓                       ↓
-            INVOICES                USAGE LOGS
-               |                       |
-               ↓                       ↓
-            PAYMENTS             PRODUCT ANALYTICS
-               |                       |
-               -------------------------
-                         |
-                         ↓
-                 Enterprise Reporting
-                         |
-         ------------------------------------------------
-         |                      |                        |
-         ↓                      ↓                        ↓
-    Revenue Intelligence    Customer Intelligence     Billing Intelligence
-        Framework               Framework                 Framework
-         |                      |                        |
-         ↓                      ↓                        ↓
-       Project 01              Project 02               Project 03
-         |                      |                        |
-         ↓                      ↓                        ↓
-     MRR & Churn            Product Usage             Revenue Leakage
-      Monitoring            Analytics                 Detection
-         |                      |                        |
-         ------------------------------------------------
-                         |
-                         ↓
-                Executive Business Insights
-
-
-```
+The three analyses use the same underlying business entities, but they answer different questions. This is deliberate. In a real SaaS company, Finance should not have to rebuild the customer population every time Product needs a retention analysis.
 
 ---
 
-## Projects Included
+## 01. MRR and Churn
 
-### 01 • Revenue Growth, Churn & MRR Intelligence Framework
+The first case study looks at recurring revenue performance.
 
-**Directory**
+It answers:
 
-```
-01-mrr-churn-analysis/
-```
+- Is MRR increasing or declining?
+- Which customers and plans contribute most to recurring revenue?
+- How much MRR is lost when customers cancel?
+- Which customer groups have stronger lifetime value?
+- Where does revenue movement need management attention?
 
-#### Business Objective
+The analysis uses subscription history to calculate recurring revenue movement rather than treating every invoice as recurring revenue.
 
-This project provides executive-level visibility into subscription revenue performance by monitoring:
-
-- Monthly Recurring Revenue (MRR)
-- Customer Churn
-- Customer Lifetime Value (CLV)
-- Revenue Trends
-- Revenue Leakage
-- Subscription Performance
-
-#### Key Business Questions
-
-> - Is recurring revenue increasing or declining?
-> - Which customers contribute most to business growth?
-> - How much revenue is lost through churn?
-> - Which customer segments generate the highest lifetime value?
-> - What early warning indicators suggest declining portfolio health?
-
-#### Primary Stakeholders
-
-- Executive Leadership
-- Finance Teams
-- Revenue Operations
-- Growth Teams
+**Primary users:** Finance, Revenue Operations, executive leadership.
 
 ---
 
-### 02 • Customer Behavior & Product Intelligence Framework
+## 02. Customer Usage
 
-**Directory**
+Revenue numbers alone do not explain whether customers are getting value from a product.
 
-```
-02-customer-usage-analysis/
-```
+This case study connects usage records to customer and subscription information to examine:
 
-#### Business Objective
+- Active users over time
+- Feature adoption
+- Engagement levels
+- Differences between retained and churned customers
+- Accounts showing weaker usage patterns
 
-This project focuses on understanding how customers interact with the product and identifying behavioral indicators associated with retention and churn.
+The output is intended to help Customer Success and Product teams decide which accounts need attention and which product behaviors deserve further investigation.
 
-#### Key Business Questions
+A usage pattern is treated as a risk signal, not proof that a customer will churn.
 
-> - Which customers actively engage with the platform?
-> - Which product features drive adoption?
-> - Which accounts are likely to churn?
-> - How can Customer Success teams intervene proactively?
-> - What behavioral patterns distinguish retained customers from churned customers?
-
-#### Key Metrics
-
-- Daily Active Users (DAU)
-- Monthly Active Users (MAU)
-- Feature Adoption Rates
-- Customer Engagement Scores
-- Churn Risk Scores
-- Product Usage Trends
-
-#### Primary Stakeholders
-
-- Product Teams
-- Customer Success Teams
-- Leadership Teams
-- Growth Teams
+**Primary users:** Product, Customer Success, Growth.
 
 ---
 
-### 03 • Billing, Payments & Revenue Leakage Intelligence Framework
+## 03. Billing and Revenue Leakage
 
-**Directory**
+A customer can be active and revenue can look healthy while cash collection is deteriorating.
 
-```
-03-billing-revenue-leakage/
-```
+This case study examines:
 
-#### Business Objective
+- Unpaid invoices
+- Invoice aging
+- Collection rates
+- Payment timing
+- Accounts with larger outstanding balances
+- Revenue that has been billed but not collected
 
-This project focuses on improving financial operations by monitoring billing performance and identifying sources of revenue leakage.
+The purpose is to give Finance and Revenue Operations a clear queue of accounts and invoices that need follow-up.
 
-#### Key Business Questions
-
-> - Which invoices remain unpaid?
-> - Which customers represent the highest collection risk?
-> - How much revenue remains uncollected?
-> - How long do customers take to pay their invoices?
-> - Which billing trends require immediate intervention?
-
-#### Key Metrics
-
-- Collection Rates
-- Revenue Leakage Analysis
-- Invoice Aging Analysis
-- Payment Performance
-- Customer Collection Risk
-- Outstanding Receivables Monitoring
-
-#### Primary Stakeholders
-
-- Finance Teams
-- Revenue Operations
-- Billing Operations
-- Executive Leadership
+**Primary users:** Finance, Billing Operations, Revenue Operations.
 
 ---
 
-## Dataset
+## Data
 
-The repository uses a synthetic SaaS dataset designed to simulate enterprise-scale subscription businesses.
+The repository uses synthetic data created for portfolio analysis. No real customer, subscription, payment, or product records are included.
 
-| Table | Records |
-|-------|---------|
+| Table | Approximate records |
+|---|---:|
 | Customers | 5,000 |
 | Subscriptions | 5,000 |
-| Subscription Plans | Multiple Pricing Plans |
+| Subscription Plans | Pricing-plan records |
 | Invoices | 6,000 |
 | Payments | 6,000 |
 | Usage Logs | 7,000+ |
 
-The dataset was intentionally designed to support:
-
-- Revenue Analytics
-- Product Analytics
-- Customer Intelligence
-- Billing Operations
-- Churn Analysis
-- Financial Reporting
-
-> **Note:** The data used throughout this repository is synthetic and was designed for analytical and educational purposes. While the business scenarios are realistic, no real customer information is included.
+The data was designed to contain enough variation to test recurring revenue, customer behavior, billing, and churn calculations.
 
 ---
 
-## Technologies Used
+## Analytical checks
 
-- SQL Server (T-SQL)
-- SQL Views
-- Common Table Expressions (CTEs)
-- Aggregate Functions
-- Window Functions
-- Data Validation Techniques
-- Customer Analytics
-- Revenue Analytics
-- Product Analytics
-- Financial Analytics
-- Business Intelligence Reporting
+Before interpreting the results, each case study checks the assumptions that can quietly break SaaS reporting:
 
----
+- Customer and subscription keys match
+- Subscription dates are logically ordered
+- Invoice and payment relationships are valid
+- Revenue measures use the intended business grain
+- Customers are not counted more than once because of one-to-many joins
+- Churn definitions use a stated denominator and time window
+- Billing balances reconcile to invoice and payment records
 
-## Methodology
-
-All three projects follow the same analytical framework:
-
-1. Data Validation
-2. Data Cleaning
-3. Reporting Layer Development
-4. KPI Development
-5. Business Intelligence Analysis
-6. Risk Identification
-7. Business Recommendations
-8. Portfolio-Level Insights
-
-Each project was independently reviewed for:
-
-- Logic errors
-- Data quality issues
-- KPI accuracy
-- Reporting consistency
-- Business relevance
-
-Where data quality or logical issues were identified, they were documented and resolved within the respective project.
+These checks matter because a SQL query can run without errors while still producing the wrong business number.
 
 ---
 
-## Skills Demonstrated
+## Repository structure
 
-This repository demonstrates proficiency in:
-
-- Advanced SQL
-- SaaS Analytics
-- Revenue Analytics
-- Product Analytics
-- Customer Intelligence
-- Financial Analytics
-- Data Modeling
-- Business Intelligence Reporting
-- Risk Analysis
-- Data Validation
-- KPI Development
-- Problem Solving
-- Decision Support Systems
-
----
-
-## Business Value
-
-This repository demonstrates how a single enterprise dataset can support multiple business functions simultaneously.
-
-Rather than answering a single analytical question, the projects collectively provide:
-
-- Revenue Intelligence
-- Customer Intelligence
-- Product Intelligence
-- Billing Intelligence
-- Churn Monitoring
-- Revenue Leakage Detection
-- Customer Risk Identification
-- Executive-Level Business Insights
-
-Most importantly, it highlights how modern analytics teams enable organizations to move from asking:
-
-> **"What happened?"**
-
-to
-
-> **"Why did it happen, what happens next, and what should we do about it?"**
-
----
-
-## Repository Structure
-
-```
+```text
 saas-analytics-portfolio/
-
-│
-├── README.md
-│
-├── data/
-│   └── README.md
-│
-├── 01-mrr-churn-analysis/
-│   ├── README.md
-│   └── mrr_churn_analysis.sql
-│
-├── 02-customer-usage-analysis/
-│   ├── README.md
-│   └── customer_usage_analysis.sql
-│
-└── 03-billing-revenue-leakage/
-    ├── README.md
-    └── billing_revenue_leakage.sql
-
+|
+|-- README.md
+|-- data/
+|   `-- README.md
+|
+|-- 01-mrr-churn-analysis/
+|   |-- README.md
+|   `-- mrr_churn_analysis.sql
+|
+|-- 02-customer-usage-analysis/
+|   |-- README.md
+|   `-- customer_usage_analysis.sql
+|
+`-- 03-billing-revenue-leakage/
+    |-- README.md
+    `-- billing_revenue_leakage.sql
 ```
+
+Start with the case-study README, then open the SQL file to follow the calculations.
 
 ---
 
-## Results
+## What this demonstrates
 
-The final solution delivers an Enterprise SaaS Intelligence Platform capable of providing actionable insights across Revenue, Product, Finance, and Customer Success functions.
+The repository shows how to move from operational SaaS records to three connected management views:
 
-By combining revenue monitoring, customer intelligence, and billing analytics, the repository demonstrates how modern data teams transform operational data into strategic business decisions and sustainable growth initiatives.
+**Revenue:** what is happening to recurring revenue and churn?
 
-> **Disclaimer:** This repository uses a synthetic SaaS dataset created for analytical and portfolio purposes. All business scenarios are representative of real-world SaaS analytics challenges, but no real customer data has been used.
+**Product:** what are customers actually doing with the product?
+
+**Billing:** what has been earned, billed, and collected?
+
+The strongest part of the work is the connection between those questions. Revenue decline can be investigated alongside customer behavior, while billing problems can be separated from genuine subscription churn.
+
+**Built by Daniel Olatunji**
