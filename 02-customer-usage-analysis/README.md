@@ -23,7 +23,7 @@ This analysis looks for the warning signs earlier:
 
 The goal is simple:
 
-> **Identify customers who may need help while they are still customers.** :contentReference[oaicite:0]{index=0}
+> **Identify customers who may need help while they are still customers.**
 
 ## How it works
 
