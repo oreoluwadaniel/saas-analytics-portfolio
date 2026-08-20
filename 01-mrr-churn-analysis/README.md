@@ -22,7 +22,7 @@ This project brings those signals together so management can answer:
 - Which customers are most valuable?
 - Are payment problems becoming an early warning sign of churn?
 
-The goal is not simply to report revenue. It is to understand **how reliable and sustainable that revenue is**. :contentReference[oaicite:0]{index=0}
+The goal is not simply to report revenue. It is to understand **how reliable and sustainable that revenue is**.
 
 ## What the system covers
 
